@@ -230,7 +230,7 @@ def parse_args(args):
         help="Path to Hateful Memes dataset directory.",
     )
     parser.add_argument(
-        "--workers", type=int, default=2, help="Number of dataloader workers per GPU."
+        "--workers", type=int, default=8, help="Number of dataloader workers per GPU."
     )
     parser.add_argument(
         "--batch-size", type=int, default=128, help="Batch size per GPU."
@@ -267,12 +267,12 @@ def parse_args(args):
     parser.add_argument(
         "--model",
         type=str,
-        default="ViT-B-32-quickgelu",
+        default="ViT-B-32",
         help="Name of the vision backbone to use.",
     )
     parser.add_argument(
         "--pretrained",
-        default='laion400m_e32',
+        default='openai',
         type=str,
         help="Use a pretrained CLIP model weights with the specified tag or file path.",
     )
