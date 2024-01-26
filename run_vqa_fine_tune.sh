@@ -1,8 +1,9 @@
-CUDA_VISIBLE_DEVICES=0
+
 cd /discobox/wjpeng/code/2024/open_clip_vqa/src
 conda activate /discobox/wjpeng/env/cyCLIP/
 
 python training/vqa_fine_tune.py \
+--gpu-id=0 \
 --epochs=20 \
 --val-frequency=100 \
 --model='ViT-B-32' \
@@ -13,12 +14,11 @@ python training/vqa_fine_tune.py \
 
 
 
-
-CUDA_VISIBLE_DEVICES=1
 cd /discobox/wjpeng/code/2024/open_clip_vqa/src
 conda activate /discobox/wjpeng/env/cyCLIP/
 
 python training/vqa_fine_tune.py \
+--gpu-id=1 \
 --epochs=20 \
 --val-frequency=100 \
 --model='ViT-B-32' \
