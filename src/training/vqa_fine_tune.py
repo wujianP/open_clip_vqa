@@ -298,9 +298,6 @@ def parse_args(args):
     )
     # add by wujian
     parser.add_argument(
-        "--epochs", type=int, default=20
-    )
-    parser.add_argument(
         "--wandb-project-name", type=str
     )
     parser.add_argument(
