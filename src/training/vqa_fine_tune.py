@@ -7,6 +7,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
+import wandb
 
 import open_clip
 from open_clip.factory import get_tokenizer
@@ -20,6 +21,9 @@ import sys
 from datasets import load_dataset_builder
 from datasets import load_dataset
 
+from training.logger import setup_logging
+import logging
+
 
 class VQATextDataset(Dataset):
     def __init__(self, df, split, transforms, label_encoder, answer_set, tokenizer=None):
@@ -29,6 +33,7 @@ class VQATextDataset(Dataset):
         self.num_classes = len(answer_set)
         self.label_encoder = label_encoder
         self.answer_set = answer_set
+
     def __len__(self):
         return len(self.df)
 
@@ -53,36 +58,39 @@ class VQATextDataset(Dataset):
         target = np.zeros(self.num_classes)
         for label, score in zip(labels, scores):
             target[label] = score
-        
+
         return {
             'image': self.transforms(image),
             'text': self.tokenize([text])[0],
             'target': torch.tensor(target)
         }
 
+
 def get_score(count: int) -> float:
     return min(1.0, count / 3.0)
+
 
 def get_task_dataloaders(path, transforms, labelencoder, answer_set, args):
     tokenizer = get_tokenizer(args.model)
     dataloaders = {}
-    
+
     for split in ["train", "validation"]:
-        dataset_train = load_dataset(path, split=split, cache_dir = "./vqa_data")
+        dataset_train = load_dataset(path, split=split, cache_dir="./vqa_data")
         dataset_df = dataset_train.to_pandas()
-        dataset_df = dataset_df[dataset_df.apply(lambda item: True if item['multiple_choice_answer'] in answer_set else False, axis=1)]
-        
+        dataset_df = dataset_df[
+            dataset_df.apply(lambda item: True if item['multiple_choice_answer'] in answer_set else False, axis=1)]
+
         b_size = args.batch_size
-        if(split == "validation"):
+        if (split == "validation"):
             b_size = args.batch_size * 10
             dataset_df = dataset_df[0:12800]
         dataset = VQATextDataset(dataset_df,
-            split,
-            transforms, 
-            labelencoder,   
-            answer_set,       
-            tokenizer=tokenizer,
-        )
+                                 split,
+                                 transforms,
+                                 labelencoder,
+                                 answer_set,
+                                 tokenizer=tokenizer,
+                                 )
         dataloader = DataLoader(
             dataset,
             batch_size=b_size,
@@ -95,18 +103,19 @@ def get_task_dataloaders(path, transforms, labelencoder, answer_set, args):
 
     return dataloaders
 
+
 class CLIPMultimodalClassifier(nn.Module):
     def __init__(self, encoder, embed_dim, num_labels):
         super().__init__()
 
         self.encoder = encoder
         self.layers = nn.Sequential(
-            nn.Linear(embed_dim * 2, 1536), #size of answer space
+            nn.Linear(embed_dim * 2, 1536),  # size of answer space
             nn.ReLU(inplace=True),
             nn.LayerNorm(1536),
             nn.Linear(1536, num_labels)
         )
-        
+
     def forward(self, image, text):
         # CLIP doesn't have a multimodal encoder, so we concatenate the features
         text_features = self.encoder.encode_text(text)
@@ -114,6 +123,7 @@ class CLIPMultimodalClassifier(nn.Module):
         multimodal_features = torch.cat([image_features, text_features], dim=-1)
         logits = self.layers(multimodal_features)
         return logits
+
 
 class EarlyStopping:
 
@@ -158,28 +168,29 @@ def compute_metrics(model, dataloader, device, args):
             logits = model(image, text)
             predictions = torch.argmax(logits, dim=-1)
             batch_val_loss = nn.functional.binary_cross_entropy_with_logits(logits, label, reduction="mean")
-        predictions=predictions.cpu().numpy()
-        references= label.cpu().numpy()
+        predictions = predictions.cpu().numpy()
+        references = label.cpu().numpy()
         val_loss += batch_val_loss.item()
         for i, pred in enumerate(predictions):
             total_correct += references[i][pred]
-    #print("total correct", total_correct, "seen", samples_seen)
+    # print("total correct", total_correct, "seen", samples_seen)
 
     model.train()
     metrics = {}
-    metrics["accuracy"] = total_correct/ samples_seen
+    metrics["accuracy"] = total_correct / samples_seen
     metrics["loss"] = val_loss / samples_seen
-    
+
     return metrics
 
-#Remove in final commit
+
+# Remove in final commit
 def train_single_epoch(model, data, optimizer, args):
     model.train()
     for i, batch in enumerate(data["train"]):
         image = batch["image"].to(device)
         text = batch["text"].to(device)
         label = batch["target"].to(device)
-        
+
         logits = model(image, text)
         print(label.shape)
         print(logits.shape)
@@ -187,20 +198,21 @@ def train_single_epoch(model, data, optimizer, args):
         print(loss)
         loss.backward()
 
-        
+
 def train_one_epoch(model, data, epoch, optimizer, scheduler, early_stop, device, args):
     model.train()
     progress_bar = tqdm(total=len(data["train"]))
     for i, batch in enumerate(data["train"]):
         step = epoch * len(data["train"]) + i
         scheduler(step)
-        
+
         image = batch["image"].to(device)
         text = batch["text"].to(device)
         label = batch["target"].to(device)
         logits = model(image, text)
 
-        loss = nn.functional.binary_cross_entropy_with_logits(logits, label, reduction = "mean") #should be cross entropy 
+        loss = nn.functional.binary_cross_entropy_with_logits(logits, label,
+                                                              reduction="mean")  # should be cross entropy
 
         optimizer.zero_grad()
         loss.backward()
@@ -208,20 +220,23 @@ def train_one_epoch(model, data, epoch, optimizer, scheduler, early_stop, device
 
         progress_bar.set_description(f"Loss: {loss.item():.4f}")
         progress_bar.update(1)
-        
+
         if (i % args.val_frequency) == 0 and i > 5:
             print(loss)
             metrics = compute_metrics(model, data["validation"], device, args)
-            print("accuracy", metrics["accuracy"])
-            end_training = early_stop.step(metrics)
-            #if end_training:
-            #    progress_bar.close()
-            #    return metrics, end_training
+            print(f"Epoch: {epoch} / {args.epochs}"
+                  f"\tloss: {loss.item():.6f}"
+                  f"\taccuracy: {metrics['accuracy']}:6f")
+            wandb.log({
+                "loss": loss.item(),
+                "acc": metrics["accuracy"]
+            })
 
     progress_bar.close()
     metrics = compute_metrics(model, data["validation"], device, args)
     end_training = early_stop.step(metrics)
     return metrics, end_training
+
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
@@ -281,13 +296,39 @@ def parse_args(args):
     parser.add_argument(
         "--seed", type=int, default=0, help="Default random seed."
     )
+    # add by wujian
+    parser.add_argument(
+        "--epochs", type=int, default=20
+    )
+    parser.add_argument(
+        "--wandb-project-name", type=str
+    )
+    parser.add_argument(
+        "--wandb-name", type=str
+    )
 
     args = parser.parse_args(args)
     return args
 
+
 def main(args):
     args = parse_args(args)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    # wandb
+    wandb_login_success = wandb.login(key='8cff0498531e0409db5f3c43b52a26b0d068f2dc', timeout=30)
+    if not wandb_login_success:
+        print("Wandb init Failed!!!")
+    else:
+        print("Starting wandb")
+        wandb.init(project=args.wandb_project_name,
+                   name=args.wandb_name,
+                   id=args.wandb_name,
+                   notes=None,
+                   tags=[],
+                   resume=None,
+                   config=vars(args))
+        # wandb.run.name = options.name
 
     model, preprocess_train, preprocess_val = open_clip.factory.create_model_and_transforms(
         args.model,
@@ -297,19 +338,19 @@ def main(args):
     )
     model_cfg = open_clip.factory.get_model_config(args.model)
     embed_dim = model_cfg["embed_dim"]
-    
+
     answer_space = []
     with open('training/answers_vqa.txt') as f:
         for line in f:
-          answer_space.append(line.strip())
+            answer_space.append(line.strip())
     answer_space = np.array(answer_space)
-    
+
     labelencoder = preprocessing.LabelEncoder()
     labelencoder.fit(answer_space)
     num_classes = len(list(labelencoder.classes_))
 
     answer_set = set(labelencoder.classes_)
-    
+
     data = get_task_dataloaders("HuggingFaceM4/VQAv2", preprocess_val, labelencoder, answer_set, args)
 
     clf_cls = CLIPMultimodalClassifier
@@ -324,8 +365,9 @@ def main(args):
         metric_name=args.early_stop_metric_name,
     )
 
-    for epoch in range(20):
+    for epoch in range(args.epochs):
         val_metrics, end_training = train_one_epoch(clf, data, epoch, optim, scheduler, early_stop, device, args)
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
