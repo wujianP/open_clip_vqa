@@ -20,6 +20,7 @@ import sys
 from datasets import load_dataset_builder
 from datasets import load_dataset
 
+
 class VQATextDataset(Dataset):
     def __init__(self, df, split, transforms, label_encoder, answer_set, tokenizer=None):
         self.df = df
@@ -298,6 +299,8 @@ def main(args):
     embed_dim = model_cfg["embed_dim"]
     
     answer_space = []
+    from IPython import embed
+    embed()
     with open('src/training/answers_vqa.txt') as f:
         for line in f:
           answer_space.append(line.strip())
