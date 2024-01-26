@@ -299,8 +299,6 @@ def main(args):
     embed_dim = model_cfg["embed_dim"]
     
     answer_space = []
-    from IPython import embed
-    embed()
     with open('training/answers_vqa.txt') as f:
         for line in f:
           answer_space.append(line.strip())
