@@ -302,6 +302,11 @@ def parse_args(args):
     parser.add_argument(
         "--wandb-name", type=str
     )
+    parser.add_argument(
+        "--gpu-id",
+        type=int,
+        default=0
+    )
 
     args = parser.parse_args(args)
     return args
@@ -309,7 +314,7 @@ def parse_args(args):
 
 def main(args):
     args = parse_args(args)
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device(f"cuda:{args.gpu_id}") if torch.cuda.is_available() else torch.device("cpu")
 
     # wandb
     wandb_login_success = wandb.login(key='8cff0498531e0409db5f3c43b52a26b0d068f2dc', timeout=30)
