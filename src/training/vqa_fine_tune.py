@@ -12,7 +12,7 @@ import open_clip
 from open_clip.factory import get_tokenizer
 from training.scheduler import cosine_lr
 from training.train import AverageMeter
-import evaluate
+# import evaluate
 from sklearn import preprocessing
 import numpy as np
 import sys
@@ -140,9 +140,10 @@ class EarlyStopping:
             return True
         return False
 
+
 def compute_metrics(model, dataloader, device, args):
     model.eval()
-    metric = evaluate.load("accuracy")
+    # metric = evaluate.load("accuracy")
     val_loss = 0
     samples_seen = 0
     total_correct = 0
