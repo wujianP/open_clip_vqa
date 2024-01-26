@@ -301,7 +301,7 @@ def main(args):
     answer_space = []
     from IPython import embed
     embed()
-    with open('src/training/answers_vqa.txt') as f:
+    with open('training/answers_vqa.txt') as f:
         for line in f:
           answer_space.append(line.strip())
     answer_space = np.array(answer_space)
