@@ -222,11 +222,10 @@ def train_one_epoch(model, data, epoch, optimizer, scheduler, early_stop, device
         progress_bar.update(1)
 
         if (i % args.val_frequency) == 0 and i > 5:
-            print(loss)
             metrics = compute_metrics(model, data["validation"], device, args)
             print(f"Epoch: {epoch} / {args.epochs}"
                   f"\tloss: {loss.item():.6f}"
-                  f"\taccuracy: {metrics['accuracy']}:6f")
+                  f"\taccuracy: {metrics['accuracy']:6f}")
             wandb.log({
                 "loss": loss.item(),
                 "acc": metrics["accuracy"]
